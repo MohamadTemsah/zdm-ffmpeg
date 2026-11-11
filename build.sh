@@ -49,7 +49,7 @@ cd "$work/ffmpeg-$FFMPEG_VERSION"
   --arch=x86_64 --target-os=mingw32 --cross-prefix="$host-" \
   --prefix="$work/ffinstall" \
   --disable-everything --disable-autodetect --disable-network --disable-doc --disable-debug \
-  --disable-ffplay --disable-ffprobe --disable-avdevice --disable-swscale --disable-postproc \
+  --disable-ffplay --disable-ffprobe --disable-avdevice \
   --enable-static --disable-shared \
   --enable-libmp3lame \
   --enable-protocol=file,pipe,crypto,data \
