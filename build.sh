@@ -62,7 +62,7 @@ cd "$work/ffmpeg-$FFMPEG_VERSION"
   --enable-filter=aresample,aformat,anull,atrim,asetpts,null \
   --extra-cflags="-I$prefix/include -O2 -fno-ident -ffile-prefix-map=$work=." \
   --extra-ldflags="-L$prefix/lib -static -Wl,--no-insert-timestamp" \
-  --extra-libs="-lpthread"
+  --extra-libs="-lpthread"   || { echo "== configure failed; its own log =="; tail -40 ffbuild/config.log; echo "== the options this FFmpeg knows =="; ./configure --help; exit 1; }
 make -j"$(nproc)" ffmpeg.exe
 "$host-strip" --strip-all ffmpeg.exe
 cp ffmpeg.exe "$out/ffmpeg.exe"
