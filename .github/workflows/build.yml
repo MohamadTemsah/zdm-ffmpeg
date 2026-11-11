@@ -1,0 +1,107 @@
+# Builds the minimal LGPL ffmpeg.exe that ZDM carries. Start it by hand (Actions > Build ffmpeg > Run workflow) or push a tag named ffmpeg-<version>-<n>.
+# Safety: every action is pinned to a commit, the build job can only read this repository, no secret is used, the only job that can write
+# (the release) never builds anything: it publishes what the build job made, after the Windows smoke test passed.
+name: Build ffmpeg
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["ffmpeg-*"]
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix binutils-mingw-w64-x86-64 nasm xz-utils gnupg make
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+      - name: Build, twice
+        run: |
+          bash build.sh "$RUNNER_TEMP/out1"
+          bash build.sh "$RUNNER_TEMP/out2"
+          a=$(sha256sum "$RUNNER_TEMP/out1/ffmpeg.exe" | cut -d' ' -f1)
+          b=$(sha256sum "$RUNNER_TEMP/out2/ffmpeg.exe" | cut -d' ' -f1)
+          if [ "$a" = "$b" ]; then echo "reproducible=yes" >> "$GITHUB_ENV"; else echo "reproducible=NO ($a / $b)" >> "$GITHUB_ENV"; fi
+          echo "two builds: $a / $b"
+          mkdir release && cp -r "$RUNNER_TEMP/out1/." release/
+          echo "Two builds on the same runner image gave the same ffmpeg.exe: $reproducible" > release/REPRODUCIBLE.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ffmpeg-release
+          path: release
+          if-no-files-found: error
+
+  smoke:
+    needs: build
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ffmpeg-release
+          path: release
+      - name: ffmpeg.exe runs, is LGPL, and does what ZDM needs
+        shell: pwsh
+        run: |
+          $exe = "$PWD\release\ffmpeg.exe"
+          $v = & $exe -hide_banner -version | Out-String
+          Write-Host $v
+          if ($v -notmatch 'ffmpeg version') { throw 'does not answer like ffmpeg' }
+          if ($v -match '--enable-(gpl|version3|nonfree)') { throw 'not an LGPL build' }
+          if ($v -notmatch '--enable-libmp3lame') { throw 'no MP3 encoder' }
+          $muxers = & $exe -hide_banner -muxers | Out-String
+          foreach ($m in 'mp4','matroska','mp3') { if ($muxers -notmatch "(?m)^\s*E\s+$m\s") { throw "no $m muxer" } }
+          # one second of silence as a WAV (44.1 kHz, 16 bit, mono), made here: WAV in, MP3 out, then the MP3 into an MP4 and an MKV file (copy)
+          $n = 44100
+          $ms = New-Object IO.MemoryStream; $w = New-Object IO.BinaryWriter($ms)
+          $w.Write([Text.Encoding]::ASCII.GetBytes('RIFF')); $w.Write([int](36 + 2*$n)); $w.Write([Text.Encoding]::ASCII.GetBytes('WAVEfmt '))
+          $w.Write([int]16); $w.Write([int16]1); $w.Write([int16]1); $w.Write([int]44100); $w.Write([int]88200); $w.Write([int16]2); $w.Write([int16]16)
+          $w.Write([Text.Encoding]::ASCII.GetBytes('data')); $w.Write([int](2*$n)); $w.Write((New-Object byte[] (2*$n)))
+          [IO.File]::WriteAllBytes("$PWD\in.wav", $ms.ToArray())
+          & $exe -hide_banner -nostdin -y -loglevel error -i in.wav -vn -c:a libmp3lame -q:a 2 -f mp3 out.mp3
+          if ((Get-Item out.mp3).Length -lt 500) { throw 'MP3 not made' }
+          & $exe -hide_banner -nostdin -y -loglevel error -i out.mp3 -c copy -f matroska out.mkv
+          if ((Get-Item out.mkv).Length -lt 500) { throw 'MKV not made' }
+          & $exe -hide_banner -nostdin -y -loglevel error -i out.mkv -c copy -f mp4 -movflags +faststart out.mp4
+          if ((Get-Item out.mp4).Length -lt 500) { throw 'MP4 not made' }
+          Write-Host 'smoke test passed'
+
+  release:
+    needs: [build, smoke]
+    if: startsWith(github.ref, 'refs/tags/ffmpeg-')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ffmpeg-release
+          path: release
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: release/ffmpeg.exe
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cd release
+          zip -r "../ffmpeg-sources-and-build-script.zip" source VERSIONS.env build.sh licenses 2>/dev/null || zip -r "../ffmpeg-sources-and-build-script.zip" source VERSIONS.env build.sh *.txt *.md
+          cd ..
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" \
+            --notes "Minimal LGPL ffmpeg.exe for ZDM. SHA256SUMS lists every file. The exact source (FFmpeg and LAME tarballs), the build script and the licenses are in this release; build.sh in the tag rebuilds it. See README.md." \
+            release/ffmpeg.exe release/SHA256SUMS release/ffmpeg-buildconf.txt release/REPRODUCIBLE.txt release/FFmpeg-COPYING.LGPLv2.1.txt release/FFmpeg-LICENSE.md release/LAME-COPYING.txt release/LAME-LICENSE.txt \
+            release/VERSIONS.env release/build.sh ffmpeg-sources-and-build-script.zip
