@@ -19,7 +19,7 @@ Each `ffmpeg.exe` also has a GitHub build attestation (provenance): `gh attestat
 
 ## What is switched on
 Configured with `--disable-everything` and only what ZDM needs: protocols `file,pipe,crypto,data`; demuxers `mov,matroska,mpegts,aac,mp3,ogg,flac,hls,concat,wav`;
-muxers `mp4,ipod,matroska,mp3,adts`; decoders `aac,aac_latm,mp3,opus,vorbis,flac,pcm` and the picture decoders `h264,hevc,vp8,vp9,av1` (ffmpeg needs one to learn the size of a picture inside MPEG-TS pieces; nothing is decoded when joining); the encoder `libmp3lame` (LAME 3.100); parsers and bitstream filters for H.264/H.265/AV1/VP9/AAC/Opus;
+muxers `mp4,ipod,matroska,mp3,adts`; decoders `aac,aac_latm,mp3,opus,vorbis,flac,pcm` and the picture decoders `h264,hevc` (ffmpeg needs one to learn the size of a picture inside MPEG-TS pieces; nothing is decoded when joining); the encoder `libmp3lame` (LAME 3.100); parsers and bitstream filters for H.264/H.265/AV1/VP9/AAC/Opus;
 filters `aresample,aformat`. No network, no GPL parts (`--enable-gpl`, `--enable-version3` and `--enable-nonfree` are not used), no ffplay, no ffprobe.
 If ZDM needs one more component, it is added to `build.sh` and the build number is raised; nothing is worked around.
 

@@ -6,7 +6,9 @@
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 out="$(realpath -m "${1:-$here/out}")"
-work="$(mktemp -d)"
+# a fixed place (not mktemp): the build records paths, and two builds must give the same file
+work=/tmp/zdm-ffmpeg-build
+rm -rf "$work"; mkdir -p "$work"
 trap 'rm -rf "$work"' EXIT
 # shellcheck source=VERSIONS.env
 . "$here/VERSIONS.env"
@@ -55,7 +57,7 @@ cd "$work/ffmpeg-$FFMPEG_VERSION"
   --enable-protocol=file,pipe,crypto,data \
   --enable-demuxer=mov,matroska,mpegts,aac,mp3,ogg,flac,hls,concat,wav \
   --enable-muxer=mp4,ipod,matroska,mp3,adts \
-  --enable-decoder=aac,aac_latm,mp3,mp3float,opus,vorbis,flac,pcm_s16le,h264,hevc,vp8,vp9,av1 \
+  --enable-decoder=aac,aac_latm,mp3,mp3float,opus,vorbis,flac,pcm_s16le,h264,hevc \
   --enable-encoder=libmp3lame \
   --enable-parser=h264,hevc,av1,vp9,aac,aac_latm,opus,vorbis,mpegaudio,flac \
   --enable-bsf=aac_adtstoasc,h264_mp4toannexb,hevc_mp4toannexb,extract_extradata,vp9_superframe,av1_frame_merge,null \
