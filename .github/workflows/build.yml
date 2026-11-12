@@ -31,10 +31,10 @@ jobs:
           bash build.sh "$RUNNER_TEMP/out2"
           a=$(sha256sum "$RUNNER_TEMP/out1/ffmpeg.exe" | cut -d' ' -f1)
           b=$(sha256sum "$RUNNER_TEMP/out2/ffmpeg.exe" | cut -d' ' -f1)
-          if [ "$a" = "$b" ]; then echo "reproducible=yes" >> "$GITHUB_ENV"; else echo "reproducible=NO ($a / $b)" >> "$GITHUB_ENV"; fi
+          if [ "$a" = "$b" ]; then same=yes; else same="NO ($a / $b)"; fi
           echo "two builds: $a / $b"
           mkdir release && cp -r "$RUNNER_TEMP/out1/." release/
-          echo "Two builds on the same runner image gave the same ffmpeg.exe: $reproducible" > release/REPRODUCIBLE.txt
+          echo "Two builds on the same runner image gave the same ffmpeg.exe: $same" > release/REPRODUCIBLE.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ffmpeg-release
